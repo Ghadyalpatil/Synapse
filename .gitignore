@@ -1,0 +1,77 @@
+# ══════════════════════════════════════════════════════
+#  Firmware
+# ══════════════════════════════════════════════════════
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+.cache/          # clangd index
+*.o
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+*.su
+
+# PlatformIO / ESP-IDF / STM32
+.pio/
+.pioenvs/
+sdkconfig
+sdkconfig.old
+managed_components/
+Debug/
+Release/
+
+# ══════════════════════════════════════════════════════
+#  Python / ML
+# ══════════════════════════════════════════════════════
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ══════════════════════════════════════════════════════
+#  Model weights, checkpoints, datasets  --  NEVER COMMIT
+#  Git keeps every version of a binary forever. A repo
+#  bloated with checkpoints cannot be fixed without
+#  rewriting history. Use LFS or external storage and
+#  commit only a small pointer/config.
+# ══════════════════════════════════════════════════════
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.tflite
+*.h5
+*.pkl
+*.joblib
+*.npz
+*.bin.gz
+checkpoints/
+weights/
+runs/
+wandb/
+mlruns/
+outputs/
+lightning_logs/
+
+# NOTE: exclude dir *contents* (data/*), not the dir (data/) --
+# git cannot re-include a file whose parent directory is excluded.
+data/*
+!data/README.md
+!data/*.yaml
+!data/*.json
+datasets/*
+!datasets/README.md
+*.csv
+*.parquet
+*.tfrecord
