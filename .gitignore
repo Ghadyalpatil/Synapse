@@ -75,3 +75,12 @@ datasets/*
 *.csv
 *.parquet
 *.tfrecord
+
+# ══════════════════════════════════════════════════════
+#  Databases & Node Keys (Local Edge Runtime)
+# ══════════════════════════════════════════════════════
+*.db
+*.sqlite
+*.sqlite3
+data/keys/
+*.key
