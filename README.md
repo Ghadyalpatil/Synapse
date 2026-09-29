@@ -73,3 +73,60 @@ pip install -r requirements.txt
 ```
 
 > **Weights and datasets are not in this repo.** See [`data/README.md`](data/README.md).
+
+---
+
+## Edge Grid Communication & Mesh Network (Branch `nishant`)
+
+SYNAPSE includes a zero-cloud, resilient local-grid mesh communication subsystem designed for autonomous surveillance edge nodes (Raspberry Pi / Jetson).
+
+### Layered Architecture
+
+```
+Layer 10: Local FastAPI Server, Tactical Web Dashboard, Node CLI & Integration Test Grid
+Layer 9 : Multi-Modal Sensor Subsystem (Thermal, Acoustic, Motion) & Threat Event Pipeline
+Layer 8 : Master Communication Orchestrator (CommunicationManager)
+Layer 7 : Loop-Free Hop Router & Persistent Store-and-Forward Outbox
+Layer 6 : Heartbeat Link Watchdog & Node State Machine (ONLINE / UNRESPONSIVE / OFFLINE)
+Layer 5 : Peer Topology Management & Autonomous UDP Discovery
+Layer 4 : Reliable Async TCP Transport with Framed Delivery ACKs
+Layer 3 : Cryptographic Identity, Ed25519 Signing, Curve25519 Box & Replay Defense
+Layer 2 : Big-Endian Length-Prefixed Binary Framing & SynapseMessage Protocol
+Layer 1 : Centralized Config, SQLite Persistence with WAL Mode & Outbox Queue
+```
+
+### Running a Local Node
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run node entrypoint
+python main.py --node-id SYNAPSE-001 --comm-port 5000 --discovery-port 5999 --api-port 8080
+
+# Access tactical web dashboard
+open http://127.0.0.1:8080
+```
+
+### Operator CLI
+
+```bash
+# Check local node status
+python cli.py status
+
+# Inspect known grid peers and route scores
+python cli.py nodes
+
+# View surveillance events and active alerts
+python cli.py events
+python cli.py alerts
+
+# Trigger a simulated multi-modal threat
+python cli.py trigger --type thermal --confidence 0.95
+```
+
+### Running Test Suite
+
+```bash
+pytest
+```

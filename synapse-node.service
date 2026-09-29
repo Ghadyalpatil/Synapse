@@ -1,0 +1,32 @@
+[Unit]
+Description=SYNAPSE — Local-Grid Border Surveillance & Communication Node
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/synapse
+Environment=PYTHONUNBUFFERED=1
+Environment=SYNAPSE_NODE_ID=SYNAPSE-001
+Environment=SYNAPSE_COMM_PORT=5000
+Environment=SYNAPSE_DISCOVERY_PORT=5999
+Environment=SYNAPSE_API_PORT=8080
+Environment=SYNAPSE_BROADCAST_IP=255.255.255.255
+Environment=SYNAPSE_LOG_LEVEL=INFO
+
+ExecStart=/usr/bin/python3 /home/pi/synapse/main.py
+Restart=always
+RestartSec=5s
+
+# Security sandboxing
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/pi/synapse/data
+
+# Resource limits for Raspberry Pi
+LimitNOFILE=65536
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

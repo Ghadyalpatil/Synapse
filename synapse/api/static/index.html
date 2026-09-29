@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SYNAPSE — Local Grid Surveillance Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <header>
+    <div class="logo-group">
+      <h1>📡 SYNAPSE <span style="font-size:0.9rem; color:var(--text-muted); font-weight:normal;">| BORDER TACTICAL SURVEILLANCE</span></h1>
+    </div>
+    <div style="display:flex; align-items:center; gap:1rem;">
+      <span id="node-badge" class="badge badge-online">LOADING...</span>
+      <span id="network-badge" class="badge" style="background:#26354d;">ZERO-CLOUD GRID</span>
+    </div>
+  </header>
+
+  <!-- Node Overview Metrics -->
+  <div class="metric-bar" style="margin-bottom: 1.5rem;">
+    <div class="metric-item">
+      <div class="metric-label">Local Node ID</div>
+      <div class="metric-value" id="val-node-id">-</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Active Grid Peers</div>
+      <div class="metric-value" id="val-peers-count" style="color:var(--accent-green);">0</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Total Events Logged</div>
+      <div class="metric-value" id="val-events-count">0</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Outbox Pending</div>
+      <div class="metric-value" id="val-outbox-pending" style="color:var(--accent-amber);">0</div>
+    </div>
+  </div>
+
+  <div class="grid-layout">
+
+    <!-- Column 1: Grid Topology & Peers -->
+    <div class="card">
+      <div class="card-title">
+        <span>🌐 Local Grid Topology</span>
+        <button onclick="fetchTopology()" style="padding:0.2rem 0.6rem; font-size:0.75rem;">Refresh</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Node ID</th>
+              <th>Endpoint</th>
+              <th>Status</th>
+              <th>Latency</th>
+              <th>Packet Loss</th>
+            </tr>
+          </thead>
+          <tbody id="peers-table-body">
+            <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No peers registered yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Simulation Action Center -->
+      <div class="card-title" style="margin-top: 1rem;">
+        <span>🎯 Sensor Trigger Simulation</span>
+      </div>
+      <p style="font-size:0.8rem; color:var(--text-muted);">Inject simulated sensor detection events into this Raspberry Pi:</p>
+      <div class="btn-group">
+        <button class="btn-danger" onclick="triggerSensor('thermal')">🔥 Thermal Target (38.5°C)</button>
+        <button class="btn-danger" onclick="triggerSensor('acoustic')">🔊 Acoustic Breach (98dB)</button>
+        <button class="btn-primary" onclick="triggerSensor('motion')">🚶 Perimeter Motion</button>
+      </div>
+    </div>
+
+    <!-- Column 2: Tactical Events & Alert Feed -->
+    <div class="card">
+      <div class="card-title">
+        <span>🚨 Real-Time Surveillance Feed</span>
+        <span class="badge badge-p0" id="live-indicator">LIVE WS</span>
+      </div>
+      <div class="feed-list" id="event-feed">
+        <div style="text-align:center; padding:1.5rem; color:var(--text-muted);">Listening for surveillance events...</div>
+      </div>
+
+      <!-- Quick Message Dispatch -->
+      <div class="card-title" style="margin-top: 0.5rem;">
+        <span>✉️ Grid Message Dispatch</span>
+      </div>
+      <form id="dispatch-form" onsubmit="handleSendMessage(event)">
+        <div class="form-row" style="margin-bottom:0.5rem;">
+          <input type="text" id="target-node" placeholder="Target Node (e.g. SYNAPSE-002 or BROADCAST)" required>
+          <select id="priority-select">
+            <option value="P1">P1 — Urgent</option>
+            <option value="P0">P0 — Critical</option>
+            <option value="P2">P2 — Normal</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <input type="text" id="msg-text" placeholder="Tactical message or order..." required>
+          <button type="submit" class="btn-primary">Transmit</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
