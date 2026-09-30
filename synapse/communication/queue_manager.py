@@ -64,6 +64,12 @@ class QueueManager:
             priority=message.priority
         )
 
+    def clear_outbox(self, status: Optional[str] = None) -> int:
+        """Clears messages from the persistent store-and-forward outbox."""
+        deleted = self.db.clear_outbox(status=status)
+        logger.info(f"[Store-and-Forward] Cleared {deleted} message(s) from outbox (filter={status})")
+        return deleted
+
     async def retry_pending_outbox(self, target_node: Optional[str] = None):
         """
         Retries delivering queued messages.

@@ -7,10 +7,11 @@ message model for zero-cloud local-grid Raspberry Pi communication.
 import asyncio
 import json
 import struct
-import time
 import uuid
 from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, List, Optional, Tuple
+
+from synapse import clock
 
 # Priority Tiers
 PRIORITY_P0 = "P0"  # Critical alerts, SOS, urgent commands
@@ -83,7 +84,7 @@ class SynapseMessage:
     ttl: int = 5
     hop_count: int = 0
     route: List[str] = field(default_factory=list)
-    timestamp: float = field(default_factory=time.time)
+    timestamp: float = field(default_factory=clock.now)
     signature: Optional[str] = None
 
     @classmethod
@@ -103,7 +104,7 @@ class SynapseMessage:
             ttl=ttl,
             hop_count=0,
             route=[source_node],
-            timestamp=time.time()
+            timestamp=clock.now()
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -122,7 +123,7 @@ class SynapseMessage:
             ttl=int(data.get("ttl", 5)),
             hop_count=int(data.get("hop_count", 0)),
             route=list(data.get("route", [])),
-            timestamp=float(data.get("timestamp", time.time())),
+            timestamp=float(data.get("timestamp", clock.now())),
             signature=data.get("signature")
         )
 

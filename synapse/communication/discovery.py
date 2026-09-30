@@ -1,17 +1,24 @@
 """
 SYNAPSE — Local UDP Node Discovery
-Autonomous peer discovery across the local IP network.
-Zero-cloud, zero-external-dependencies.
+Autonomous peer discovery across the local wired/wireless mesh network.
+Fully air-gapped: zero cloud, zero external dependencies.
+Uses UDP broadcast on the configured subnet. On a direct wired Raspberry Pi
+peer-to-peer link (no router, no DHCP), falls back to link-local multicast
+(224.0.0.251) which works over any Ethernet cable without a DHCP-assigned address.
 """
 
 import asyncio
 import json
 import logging
 import socket
-import time
 from typing import Callable, Dict, Optional
 
+from synapse import clock
+
 logger = logging.getLogger("synapse.discovery")
+
+# Link-local multicast group — reachable on any Ethernet link without a router
+_MULTICAST_GROUP = "224.0.0.251"
 
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
@@ -51,7 +58,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     "node_id": self.node_id,
                     "comm_port": self.comm_port,
                     "public_key": self.public_key,
-                    "timestamp": time.time()
+                    "timestamp": clock.now()
                 }
                 resp_bytes = json.dumps(response).encode("utf-8")
                 self.transport.sendto(resp_bytes, addr)
@@ -134,7 +141,11 @@ class NodeDiscoveryService:
             self.on_node_discovered(node_id, sender_ip, comm_port, public_key)
 
     async def broadcast_announcement(self):
-        """Broadcasts a single discovery beacon immediately."""
+        """Broadcasts a single discovery beacon immediately.
+        Sends to both the configured broadcast IP and the link-local multicast
+        group so that nodes connected directly via Ethernet (no router) can
+        discover each other without DHCP or a configured subnet.
+        """
         if not self._transport:
             return
         beacon = {
@@ -142,13 +153,20 @@ class NodeDiscoveryService:
             "node_id": self.node_id,
             "comm_port": self.comm_port,
             "public_key": self.public_key,
-            "timestamp": time.time()
+            "timestamp": clock.now()
         }
         data = json.dumps(beacon).encode("utf-8")
+        # Primary broadcast
         try:
             self._transport.sendto(data, (self.broadcast_ip, self.discovery_port))
         except Exception as e:
             logger.debug(f"Broadcast beacon send failed: {e}")
+        # Link-local multicast fallback (works on any Ethernet cable without a router)
+        if self.broadcast_ip != _MULTICAST_GROUP:
+            try:
+                self._transport.sendto(data, (_MULTICAST_GROUP, self.discovery_port))
+            except Exception as e:
+                logger.debug(f"Multicast beacon send failed: {e}")
 
     async def _beacon_loop(self):
         """Periodically broadcasts node presence."""
