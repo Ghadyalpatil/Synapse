@@ -34,6 +34,13 @@ class TriggerSensorRequest(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
 
+class RegisterPeerRequest(BaseModel):
+    node_id: str
+    ip: str = "127.0.0.1"
+    port: int
+    public_key: Optional[str] = None
+
+
 def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
     """Creates the FastAPI application wired to SYNAPSE subsystems."""
     app = FastAPI(title=f"SYNAPSE Node API [{comm_manager.node_id}]")
@@ -117,6 +124,12 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
     async def get_outbox(limit: int = 50):
         return db.get_pending_outbox(limit=limit)
 
+    @app.delete("/api/outbox")
+    @app.post("/api/outbox/clear")
+    async def clear_outbox(status: Optional[str] = None):
+        deleted = db.clear_outbox(status=status)
+        return {"status": "CLEARED", "deleted_count": deleted}
+
     @app.post("/api/send")
     async def send_message(req: SendMessageRequest):
         res = await comm_manager.send_message(
@@ -141,6 +154,23 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
     async def force_sync(target_node: str):
         success = await comm_manager.queue_manager.sync_with_peer(target_node)
         return {"status": "SUCCESS" if success else "FAILED", "target": target_node}
+
+    @app.post("/api/register_peer")
+    async def register_peer(req: RegisterPeerRequest):
+        is_new = comm_manager.node_manager.register_peer(
+            node_id=req.node_id,
+            ip=req.ip,
+            port=req.port,
+            public_key=req.public_key
+        )
+        asyncio.create_task(comm_manager.queue_manager.retry_pending_outbox(target_node=req.node_id))
+        return {
+            "status": "REGISTERED",
+            "node_id": req.node_id,
+            "ip": req.ip,
+            "port": req.port,
+            "is_new": is_new
+        }
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):

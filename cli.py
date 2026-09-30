@@ -12,7 +12,7 @@ import urllib.error
 DEFAULT_API_URL = "http://127.0.0.1:8080"
 
 
-def make_request(url: str, method: str = "GET", data: dict = None):
+def make_request(url: str, method: str = "GET", data: dict = None, silent: bool = False):
     try:
         req_data = json.dumps(data).encode("utf-8") if data else None
         headers = {"Content-Type": "application/json"} if data else {}
@@ -20,17 +20,19 @@ def make_request(url: str, method: str = "GET", data: dict = None):
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.URLError as e:
-        print(f"[ERROR] Cannot connect to local SYNAPSE node at {url}: {e.reason}")
+        if not silent:
+            print(f"[ERROR] Cannot connect to local SYNAPSE node at {url}: {e.reason}")
         sys.exit(1)
     except Exception as e:
-        print(f"[ERROR] Request failed: {e}")
+        if not silent:
+            print(f"[ERROR] Request failed: {e}")
         sys.exit(1)
 
 
 def cmd_status(args):
     data = make_request(f"{args.api}/api/status")
     print("\n" + "=" * 50)
-    print(f"📡 SYNAPSE LOCAL NODE STATUS: {data.get('node_id')}")
+    print(f"[+] SYNAPSE LOCAL NODE STATUS: {data.get('node_id')}")
     print("=" * 50)
     print(f"Communication Port : {data.get('comm_port')}")
     print(f"Discovery Port     : {data.get('discovery_port')}")
@@ -94,6 +96,37 @@ def cmd_outbox(args):
     print("=" * 70 + "\n")
 
 
+def cmd_clear_outbox(args):
+    try:
+        url = f"{args.api}/api/outbox/clear"
+        if args.status:
+            url += f"?status={args.status}"
+        res = make_request(url, method="POST", silent=True)
+        print(f"\n[+] STORE-AND-FORWARD OUTBOX CLEARED (via API): {res.get('deleted_count', 0)} message(s) removed.\n")
+        return
+    except SystemExit:
+        pass
+
+    # Fallback to direct SQLite cleanup across var/data/*.db
+    import glob
+    import sqlite3
+    total = 0
+    for db_file in glob.glob("var/data/*.db"):
+        try:
+            conn = sqlite3.connect(db_file)
+            cur = conn.cursor()
+            if args.status:
+                cur.execute("DELETE FROM outbox WHERE status = ?", (args.status,))
+            else:
+                cur.execute("DELETE FROM outbox")
+            conn.commit()
+            total += cur.rowcount
+            conn.close()
+        except Exception as e:
+            print(f"[!] Warning cleaning {db_file}: {e}")
+    print(f"\n[+] STORE-AND-FORWARD OUTBOX CLEARED (direct database): {total} message(s) removed.\n")
+
+
 def cmd_send(args):
     payload = {"message": args.message}
     if args.payload:
@@ -150,6 +183,11 @@ def main():
     # outbox
     p_outbox = subparsers.add_parser("outbox", help="List pending store-and-forward outbox items")
     p_outbox.set_defaults(func=cmd_outbox)
+
+    # clear-outbox
+    p_clear_outbox = subparsers.add_parser("clear-outbox", help="Clear all messages in store-and-forward outbox")
+    p_clear_outbox.add_argument("--status", choices=["PENDING", "DELIVERED", "EXPIRED"], default=None, help="Filter by status (default: clear all)")
+    p_clear_outbox.set_defaults(func=cmd_clear_outbox)
 
     # send
     p_send = subparsers.add_parser("send", help="Send a message to a node or BROADCAST")
