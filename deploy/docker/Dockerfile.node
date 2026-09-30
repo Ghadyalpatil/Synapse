@@ -1,0 +1,26 @@
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    SYNAPSE_DATA_DIR=/var/synapse/data \
+    SYNAPSE_KEYS_DIR=/var/synapse/keys
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+RUN pip install --no-cache-dir -e .
+
+RUN mkdir -p /var/synapse/data /var/synapse/keys /var/synapse/logs
+
+EXPOSE 5000/tcp 5999/udp 8080/tcp
+
+ENTRYPOINT ["python", "-m", "synapse"]

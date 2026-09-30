@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  node-alpha:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.node
+    environment:
+      - SYNAPSE_NODE_ID=SYNAPSE-ALPHA
+      - SYNAPSE_COMM_PORT=5000
+      - SYNAPSE_DISCOVERY_PORT=5999
+      - SYNAPSE_API_PORT=8080
+      - SYNAPSE_BROADCAST_IP=172.28.255.255
+    ports:
+      - "8081:8080"
+    networks:
+      tactical_mesh:
+        ipv4_address: 172.28.0.10
+
+  node-bravo:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.node
+    environment:
+      - SYNAPSE_NODE_ID=SYNAPSE-BRAVO
+      - SYNAPSE_COMM_PORT=5000
+      - SYNAPSE_DISCOVERY_PORT=5999
+      - SYNAPSE_API_PORT=8080
+      - SYNAPSE_BROADCAST_IP=172.28.255.255
+    ports:
+      - "8082:8080"
+    networks:
+      tactical_mesh:
+        ipv4_address: 172.28.0.11
+
+  node-charlie:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.node
+    environment:
+      - SYNAPSE_NODE_ID=SYNAPSE-CHARLIE
+      - SYNAPSE_COMM_PORT=5000
+      - SYNAPSE_DISCOVERY_PORT=5999
+      - SYNAPSE_API_PORT=8080
+      - SYNAPSE_BROADCAST_IP=172.28.255.255
+    ports:
+      - "8083:8080"
+    networks:
+      tactical_mesh:
+        ipv4_address: 172.28.0.12
+
+networks:
+  tactical_mesh:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

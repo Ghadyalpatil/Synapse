@@ -1,0 +1,20 @@
+# Ignore runtime database files and WAL logs
+*.db
+*.db-wal
+*.db-shm
+
+# Ignore private cryptographic keys generated at runtime
+keys/*
+!keys/.gitkeep
+
+# Ignore runtime execution logs
+logs/*
+!logs/.gitkeep
+
+# Ignore PID and lock files
+run/*
+!run/.gitkeep
+
+# Ignore data caches
+data/*
+!data/.gitkeep
