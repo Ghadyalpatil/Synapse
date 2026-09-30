@@ -2,16 +2,17 @@
 SYNAPSE — Cryptographic Security Subsystem
 Provides local-first node identity, asymmetric cryptography (PyNaCl / Curve25519 / Ed25519),
 message signing, authenticated encryption, and replay attack prevention.
-Zero cloud, zero remote certificate authorities.
+Fully air-gapped: zero cloud, zero remote certificate authorities, no NTP dependency.
 """
 
 import hmac
 import hashlib
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+
+from synapse import clock as _clock
 
 try:
     from nacl.public import PrivateKey, PublicKey, Box
@@ -33,11 +34,13 @@ class SecurityManager:
         self.public_key_path = self.keys_dir / f"{self.node_id.lower()}_public.key"
         self.signing_key_path = self.keys_dir / f"{self.node_id.lower()}_sign.key"
 
-        # Replay Protection: Ring cache of recently seen message IDs and timestamp skew check
+        # Replay Protection: Ring cache of recently seen message IDs and timestamp skew check.
+        # Clock skew window is wide (600s) so that air-gapped nodes with imprecise RTC
+        # clocks or post-reboot drift can still communicate without constant rejection.
         self._seen_nonces = set()
         self._seen_order = []
         self._max_history = 5000
-        self._max_clock_skew_sec = 300.0  # 5 minutes window for disconnected field nodes
+        self._max_clock_skew_sec = 600.0  # 10-minute window for air-gapped field nodes
 
         self._init_keys()
 
@@ -132,10 +135,12 @@ class SecurityManager:
         Validates that:
         1. The message ID has not been seen before.
         2. The message timestamp is within the acceptable clock skew window.
+        Uses the offline-safe synapse.clock.now() instead of time.time() so that
+        air-gapped nodes with imprecise system clocks still pass validation.
         Returns: (is_valid, reason)
         """
-        now = time.time()
-        # Check clock skew (prevent messages from arbitrary future or very distant past)
+        now = _clock.now()
+        # Clock skew check — uses corrected offline clock, not raw time.time()
         if abs(now - timestamp) > self._max_clock_skew_sec:
             return False, f"Timestamp out of window: delta={abs(now - timestamp):.1f}s > {self._max_clock_skew_sec}s"
 

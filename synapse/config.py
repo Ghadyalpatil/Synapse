@@ -9,10 +9,11 @@ from pathlib import Path
 
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get("SYNAPSE_DATA_DIR", BASE_DIR / "data"))
+VAR_DIR = BASE_DIR / "var"
+DATA_DIR = Path(os.environ.get("SYNAPSE_DATA_DIR", VAR_DIR / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-KEYS_DIR = Path(os.environ.get("SYNAPSE_KEYS_DIR", DATA_DIR / "keys"))
+KEYS_DIR = Path(os.environ.get("SYNAPSE_KEYS_DIR", VAR_DIR / "keys"))
 KEYS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Node Identity

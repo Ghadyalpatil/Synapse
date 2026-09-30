@@ -376,6 +376,22 @@ class Database:
                 """, (now, message_id))
             self._conn.commit()
 
+    def clear_outbox(self, status: Optional[str] = None) -> int:
+        """
+        Clears messages from the outbox queue.
+        If status is provided (e.g. 'PENDING'), only deletes messages with that status.
+        If status is None, clears all messages from the outbox.
+        Returns the number of rows deleted.
+        """
+        with self._lock:
+            if status:
+                cur = self._conn.execute("DELETE FROM outbox WHERE status = ?", (status,))
+            else:
+                cur = self._conn.execute("DELETE FROM outbox")
+            deleted = cur.rowcount
+            self._conn.commit()
+            return deleted
+
     def get_outbox_count(self) -> Dict[str, int]:
         with self._lock:
             cur = self._conn.execute("""
