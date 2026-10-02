@@ -9,6 +9,8 @@ import random
 import time
 from typing import Any, Dict, List, Optional
 
+from synapse import clock
+
 
 class BaseSensor(abc.ABC):
     """Abstract interface for SYNAPSE surveillance sensors."""
@@ -108,11 +110,30 @@ class SensorManager:
 
     def trigger_mock_detection(self, sensor_type: str = "thermal", confidence: float = 0.95, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Manually triggers a simulated surveillance detection event for testing."""
-        return {
+        s_type = sensor_type.lower()
+        is_thermal = s_type == "thermal"
+        is_acoustic = s_type == "acoustic"
+        is_motion = s_type == "motion"
+
+        reading: Dict[str, Any] = {
             "sensor_id": f"TEST-{sensor_type.upper()}-01",
-            "sensor_type": sensor_type,
-            "target_detected": True,
+            "sensor_type": s_type,
             "confidence": confidence,
             "details": details or {"zone": "Sector-4B", "direction": "Northbound"},
-            "timestamp": time.time()
+            "timestamp": clock.now()
         }
+
+        if is_thermal:
+            reading["target_detected"] = True
+            reading["temperature_celsius"] = 38.5
+        elif is_acoustic:
+            reading["anomaly_detected"] = True
+            reading["decibels"] = 98.0
+            reading["signature"] = "VEHICLE_ENGINE"
+        elif is_motion:
+            reading["motion_detected"] = True
+            reading["intensity"] = 0.92
+        else:
+            reading["target_detected"] = True
+
+        return reading

@@ -25,10 +25,12 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
     """Async UDP Protocol for sending and receiving node discovery beacons."""
 
     def __init__(self, node_id: str, comm_port: int, public_key: str,
-                 discovery_callback: Callable[[Dict[str, any], str], None]):
+                 discovery_callback: Callable[[Dict[str, any], str], None],
+                 verify_key: Optional[str] = None):
         self.node_id = node_id
         self.comm_port = comm_port
         self.public_key = public_key
+        self.verify_key = verify_key
         self.discovery_callback = discovery_callback
         self.transport: Optional[asyncio.DatagramTransport] = None
 
@@ -58,6 +60,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     "node_id": self.node_id,
                     "comm_port": self.comm_port,
                     "public_key": self.public_key,
+                    "verify_key": self.verify_key,
                     "timestamp": clock.now()
                 }
                 resp_bytes = json.dumps(response).encode("utf-8")
@@ -75,11 +78,13 @@ class NodeDiscoveryService:
 
     def __init__(self, node_id: str, comm_port: int, discovery_port: int,
                  public_key: str, broadcast_ip: str,
-                 on_node_discovered: Callable[[str, str, int, Optional[str]], None]):
+                 on_node_discovered: Callable[[str, str, int, Optional[str], Optional[str]], None],
+                 verify_key: Optional[str] = None):
         self.node_id = node_id
         self.comm_port = comm_port
         self.discovery_port = discovery_port
         self.public_key = public_key
+        self.verify_key = verify_key
         self.broadcast_ip = broadcast_ip
         self.on_node_discovered = on_node_discovered
 
@@ -109,7 +114,8 @@ class NodeDiscoveryService:
                 self.node_id,
                 self.comm_port,
                 self.public_key,
-                self._handle_discovery_packet
+                self._handle_discovery_packet,
+                verify_key=self.verify_key
             ),
             sock=sock
         )
@@ -135,10 +141,11 @@ class NodeDiscoveryService:
         node_id = msg.get("node_id")
         comm_port = msg.get("comm_port")
         public_key = msg.get("public_key")
+        verify_key = msg.get("verify_key")
 
         if node_id and comm_port:
             logger.info(f"[Discovery] Discovered active node: {node_id} at {sender_ip}:{comm_port}")
-            self.on_node_discovered(node_id, sender_ip, comm_port, public_key)
+            self.on_node_discovered(node_id, sender_ip, comm_port, public_key, verify_key)
 
     async def broadcast_announcement(self):
         """Broadcasts a single discovery beacon immediately.
@@ -153,6 +160,7 @@ class NodeDiscoveryService:
             "node_id": self.node_id,
             "comm_port": self.comm_port,
             "public_key": self.public_key,
+            "verify_key": self.verify_key,
             "timestamp": clock.now()
         }
         data = json.dumps(beacon).encode("utf-8")
@@ -161,6 +169,15 @@ class NodeDiscoveryService:
             self._transport.sendto(data, (self.broadcast_ip, self.discovery_port))
         except Exception as e:
             logger.debug(f"Broadcast beacon send failed: {e}")
+        # On loopback (e.g. 127.0.0.255), send to nearby test ports (5998 and 5999) if running locally
+        if self.broadcast_ip.startswith("127.0.0."):
+            alt_ports = [5998, 5999]
+            for p in alt_ports:
+                if p != self.discovery_port:
+                    try:
+                        self._transport.sendto(data, ("127.0.0.1", p))
+                    except Exception:
+                        pass
         # Link-local multicast fallback (works on any Ethernet cable without a router)
         if self.broadcast_ip != _MULTICAST_GROUP:
             try:

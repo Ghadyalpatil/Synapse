@@ -10,6 +10,7 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
+from synapse import clock
 from ..communication.manager import CommunicationManager
 from ..communication.protocol import TYPE_ALERT, TYPE_TARGET_DETECTED
 from ..sensors.sensor_engine import SensorManager
@@ -63,7 +64,7 @@ class EventEngine:
             sensor_id=reading.get("sensor_id", "SENSOR-01"),
             sensor_type=sensor_type,
             raw_value=reading,
-            timestamp=reading.get("timestamp", time.time())
+            timestamp=reading.get("timestamp", clock.now())
         )
 
         # Threat Assessment Rules
@@ -99,7 +100,7 @@ class EventEngine:
 
         # Generate unique Event ID
         event_id = f"EVT-{uuid.uuid4().hex[:10].upper()}"
-        now = time.time()
+        now = clock.now()
 
         logger.info(f"[EventEngine] Threat confirmed! Generated {event_id}: {summary}")
 

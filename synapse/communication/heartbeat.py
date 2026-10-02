@@ -67,10 +67,12 @@ class HeartbeatWatchdog:
                 ip = peer["ip"]
                 port = peer["port"]
                 current_status = peer.get("status")
-                last_seen = peer.get("last_seen") or 0.0
+                last_seen = peer.get("last_seen") or now
 
-                # Perform probe
-                is_alive, latency_ms = await self.tcp_client.ping_probe(ip, port, timeout=2.0)
+                # Perform probe with local node identification
+                is_alive, latency_ms = await self.tcp_client.ping_probe(
+                    ip, port, timeout=2.0, source_node=self.node_manager.local_node_id
+                )
                 self.node_manager.record_attempt(node_id, is_alive, latency_ms)
 
                 if is_alive:

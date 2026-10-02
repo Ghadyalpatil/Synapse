@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from synapse import clock
+
 
 class Database:
     """Thread-safe SQLite storage for a SYNAPSE surveillance node."""
@@ -40,6 +42,7 @@ class Database:
                 ip TEXT NOT NULL,
                 port INTEGER NOT NULL,
                 public_key TEXT,
+                verify_key TEXT,
                 status TEXT DEFAULT 'OFFLINE',
                 last_seen REAL,
                 latency_ms REAL,
@@ -132,6 +135,13 @@ class Database:
             """)
             self._conn.commit()
 
+            # Ensure verify_key column exists for pre-existing databases
+            try:
+                self._conn.execute("ALTER TABLE nodes ADD COLUMN verify_key TEXT")
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass
+
     def close(self):
         with self._lock:
             self._conn.close()
@@ -140,19 +150,21 @@ class Database:
     # Node Management
     # ──────────────────────────────────────────────────────────────
 
-    def upsert_node(self, node_id: str, ip: str, port: int, public_key: Optional[str] = None, status: str = "ONLINE") -> None:
+    def upsert_node(self, node_id: str, ip: str, port: int, public_key: Optional[str] = None,
+                    status: str = "ONLINE", verify_key: Optional[str] = None) -> None:
         with self._lock:
-            now = time.time()
+            now = clock.now()
             self._conn.execute("""
-                INSERT INTO nodes (node_id, ip, port, public_key, status, last_seen)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO nodes (node_id, ip, port, public_key, verify_key, status, last_seen)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(node_id) DO UPDATE SET
                     ip = excluded.ip,
                     port = excluded.port,
                     public_key = COALESCE(excluded.public_key, nodes.public_key),
+                    verify_key = COALESCE(excluded.verify_key, nodes.verify_key),
                     status = excluded.status,
                     last_seen = excluded.last_seen
-            """, (node_id, ip, port, public_key, status, now))
+            """, (node_id, ip, port, public_key, verify_key, status, now))
             self._conn.commit()
 
     def update_node_status(self, node_id: str, status: str) -> None:
@@ -171,7 +183,7 @@ class Database:
             attempts = (row["total_attempts"] or 0) + 1
             failures = (row["total_failures"] or 0) + (0 if success else 1)
             loss = round(failures / attempts, 3) if attempts > 0 else 0.0
-            now = time.time()
+            now = clock.now()
             if success:
                 self._conn.execute("""
                     UPDATE nodes SET
@@ -322,33 +334,55 @@ class Database:
     def enqueue_outbox(self, message_id: str, destination_node: str, payload: Dict[str, Any], priority: str = "P2") -> bool:
         with self._lock:
             try:
-                now = time.time()
+                now = clock.now()
                 payload_str = json.dumps(payload)
                 self._conn.execute("""
                     INSERT INTO outbox (message_id, destination_node, payload, priority, created_at, status)
                     VALUES (?, ?, ?, ?, ?, 'PENDING')
+                    ON CONFLICT(message_id) DO UPDATE SET
+                        status = 'PENDING',
+                        destination_node = excluded.destination_node,
+                        payload = excluded.payload,
+                        priority = excluded.priority,
+                        attempts = 0,
+                        last_attempt = 0
                 """, (message_id, destination_node, payload_str, priority, now))
                 self._conn.commit()
                 return True
             except sqlite3.IntegrityError:
                 return False
 
-    def get_pending_outbox(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_pending_outbox(self, limit: int = 20, destination_node: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._lock:
             # Sort by Priority (P0 > P1 > P2) then created_at
-            cur = self._conn.execute("""
-                SELECT * FROM outbox
-                WHERE status = 'PENDING'
-                ORDER BY
-                    CASE priority
-                        WHEN 'P0' THEN 0
-                        WHEN 'P1' THEN 1
-                        WHEN 'P2' THEN 2
-                        ELSE 3
-                    END,
-                    created_at ASC
-                LIMIT ?
-            """, (limit,))
+            if destination_node:
+                cur = self._conn.execute("""
+                    SELECT * FROM outbox
+                    WHERE status = 'PENDING' AND (destination_node = ? OR destination_node IN ('BROADCAST', '*', 'ALL'))
+                    ORDER BY
+                        CASE priority
+                            WHEN 'P0' THEN 0
+                            WHEN 'P1' THEN 1
+                            WHEN 'P2' THEN 2
+                            ELSE 3
+                        END,
+                        created_at ASC
+                    LIMIT ?
+                """, (destination_node, limit))
+            else:
+                cur = self._conn.execute("""
+                    SELECT * FROM outbox
+                    WHERE status = 'PENDING'
+                    ORDER BY
+                        CASE priority
+                            WHEN 'P0' THEN 0
+                            WHEN 'P1' THEN 1
+                            WHEN 'P2' THEN 2
+                            ELSE 3
+                        END,
+                        created_at ASC
+                    LIMIT ?
+                """, (limit,))
             items = []
             for r in cur.fetchall():
                 d = dict(r)
@@ -446,3 +480,24 @@ class Database:
         with self._lock:
             cur = self._conn.execute("SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT ?", (limit,))
             return [dict(r) for r in cur.fetchall()]
+
+    # ──────────────────────────────────────────────────────────────
+    # Peer State Synchronization Cursors
+    # ──────────────────────────────────────────────────────────────
+
+    def get_sync_cursor(self, peer_node: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM sync_state WHERE peer_node = ?", (peer_node,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def set_sync_cursor(self, peer_node: str, last_synced_event_id: Optional[str], last_synced_timestamp: float) -> None:
+        with self._lock:
+            self._conn.execute("""
+                INSERT INTO sync_state (peer_node, last_synced_event_id, last_synced_timestamp)
+                VALUES (?, ?, ?)
+                ON CONFLICT(peer_node) DO UPDATE SET
+                    last_synced_event_id = excluded.last_synced_event_id,
+                    last_synced_timestamp = excluded.last_synced_timestamp
+            """, (peer_node, last_synced_event_id, last_synced_timestamp))
+            self._conn.commit()

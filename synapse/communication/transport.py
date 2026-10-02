@@ -61,9 +61,10 @@ class TcpTransportClient:
                 except Exception:
                     pass
 
-    async def ping_probe(self, ip: str, port: int, timeout: float = 2.0) -> Tuple[bool, Optional[float]]:
+    async def ping_probe(self, ip: str, port: int, timeout: float = 2.0, source_node: Optional[str] = None) -> Tuple[bool, Optional[float]]:
         """
         Lightweight connection liveness check.
+        If source_node is provided, transmits a minimal HEARTBEAT frame so the peer records our presence.
         Returns: (is_alive, latency_ms)
         """
         writer = None
@@ -73,6 +74,19 @@ class TcpTransportClient:
                 asyncio.open_connection(ip, port),
                 timeout=timeout
             )
+            if source_node:
+                hb = {
+                    "message_id": f"HB-{int(time.monotonic() * 1000)}",
+                    "source_node": source_node,
+                    "destination_node": "PEER",
+                    "message_type": "HEARTBEAT",
+                    "payload": {},
+                    "timestamp": time.time()
+                }
+                writer.write(frame_message(hb))
+                await writer.drain()
+                await read_framed_message(reader, timeout=timeout)
+
             latency = (time.monotonic() - start) * 1000.0
             return True, round(latency, 2)
         except Exception:

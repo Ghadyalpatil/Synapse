@@ -39,6 +39,7 @@ class RegisterPeerRequest(BaseModel):
     ip: str = "127.0.0.1"
     port: int
     public_key: Optional[str] = None
+    verify_key: Optional[str] = None
 
 
 def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
@@ -84,6 +85,7 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
             "comm_port": comm_manager.comm_port,
             "discovery_port": comm_manager.discovery_port,
             "public_key": comm_manager.security.get_public_key_hex(),
+            "verify_key": comm_manager.security.get_verify_key_hex(),
             "total_peers_count": len(peers),
             "online_peers_count": len(online_peers),
             "outbox_pending": outbox_counts.get("PENDING", 0),
@@ -161,7 +163,8 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
             node_id=req.node_id,
             ip=req.ip,
             port=req.port,
-            public_key=req.public_key
+            public_key=req.public_key,
+            verify_key=req.verify_key
         )
         asyncio.create_task(comm_manager.queue_manager.retry_pending_outbox(target_node=req.node_id))
         return {

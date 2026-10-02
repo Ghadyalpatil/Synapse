@@ -47,7 +47,7 @@ def save_epoch_anchor(run_dir: Path):
     anchor_path = run_dir / _ANCHOR_FILENAME
     try:
         anchor_path.write_text(json.dumps({
-            "wall_time": time.time(),
+            "wall_time": now(),
             "mono_ref": time.monotonic(),
             "node_boot_wall": _BOOT_WALL
         }, indent=2))

@@ -39,6 +39,7 @@ class NodeManager:
                 "ip": r["ip"],
                 "port": r["port"],
                 "public_key": r.get("public_key"),
+                "verify_key": r.get("verify_key"),
                 "status": r.get("status", STATUS_OFFLINE),
                 "last_seen": r.get("last_seen"),
                 "latency_ms": r.get("latency_ms"),
@@ -47,7 +48,8 @@ class NodeManager:
                 "total_failures": r.get("total_failures", 0)
             }
 
-    def register_peer(self, node_id: str, ip: str, port: int, public_key: Optional[str] = None) -> bool:
+    def register_peer(self, node_id: str, ip: str, port: int, public_key: Optional[str] = None,
+                      verify_key: Optional[str] = None) -> bool:
         """
         Adds or updates a peer in the registry and database.
         Returns True if this is a newly discovered node.
@@ -63,6 +65,7 @@ class NodeManager:
             "ip": ip,
             "port": port,
             "public_key": public_key or existing.get("public_key"),
+            "verify_key": verify_key or existing.get("verify_key"),
             "status": STATUS_ONLINE,
             "last_seen": time.time(),
             "latency_ms": existing.get("latency_ms"),
@@ -72,7 +75,14 @@ class NodeManager:
         }
 
         # Persist to local SQLite
-        self.db.upsert_node(node_id, ip, port, public_key, status=STATUS_ONLINE)
+        self.db.upsert_node(
+            node_id=node_id,
+            ip=ip,
+            port=port,
+            public_key=public_key or existing.get("public_key"),
+            status=STATUS_ONLINE,
+            verify_key=verify_key or existing.get("verify_key")
+        )
 
         if is_new:
             logger.info(f"[NodeManager] New node added to grid: {node_id} at {ip}:{port}")

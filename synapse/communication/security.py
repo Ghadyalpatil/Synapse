@@ -93,16 +93,19 @@ class SecurityManager:
 
     def verify_signature(self, message_data: Dict[str, Any], signature_hex: str, verify_key_hex: Optional[str] = None) -> bool:
         """Verifies message signature against the sender's verify key."""
+        if not signature_hex:
+            return False
         try:
             serialized = self._canonical_bytes(message_data)
-            if NACL_AVAILABLE and verify_key_hex:
+            if NACL_AVAILABLE:
+                if not verify_key_hex:
+                    return False
                 verify_key = VerifyKey(bytes.fromhex(verify_key_hex))
                 verify_key.verify(serialized, bytes.fromhex(signature_hex))
                 return True
-            elif not NACL_AVAILABLE:
-                # Basic check
+            else:
+                # Basic check if nacl is absent
                 return len(signature_hex) > 0
-            return True
         except Exception:
             return False
 

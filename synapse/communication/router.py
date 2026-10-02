@@ -37,6 +37,11 @@ class DuplicateFilter:
             oldest = self.history.pop(0)
             self.seen_ids.discard(oldest)
 
+    def unmark(self, message_id: str):
+        self.seen_ids.discard(message_id)
+        if message_id in self.history:
+            self.history.remove(message_id)
+
 
 class MessageRouter:
     """Routes messages across the local SYNAPSE grid."""
@@ -49,7 +54,7 @@ class MessageRouter:
         self.db = db
         self.duplicate_filter = DuplicateFilter()
 
-    async def forward_or_deliver(self, message: SynapseMessage) -> Tuple[bool, List[str], List[str]]:
+    async def forward_or_deliver(self, message: SynapseMessage, allow_retry: bool = False) -> Tuple[bool, List[str], List[str]]:
         """
         Processes or forwards an incoming or newly created message.
         Returns: (success: bool, delivered_nodes: list[str], failed_nodes: list[str])
@@ -57,12 +62,10 @@ class MessageRouter:
         msg_id = message.message_id
         dest = message.destination_node
 
-        # Check duplicate
-        if self.duplicate_filter.is_duplicate(msg_id):
+        # Check duplicate unless explicitly allowed (e.g. outbox store-and-forward retry)
+        if not allow_retry and self.duplicate_filter.is_duplicate(msg_id):
             logger.debug(f"[Router] Duplicate message {msg_id} dropped.")
             return False, [], []
-
-        self.duplicate_filter.mark_seen(msg_id)
 
         # Case 1: Destined for THIS node
         if dest == self.local_node_id:
@@ -82,6 +85,7 @@ class MessageRouter:
                 delivered=True,
                 status="DELIVERED"
             )
+            self.duplicate_filter.mark_seen(msg_id)
             return True, [self.local_node_id], []
 
         # Case 2: BROADCAST (Flood to all active peers)
@@ -112,6 +116,8 @@ class MessageRouter:
                 else:
                     failed.append(peer_id)
 
+            if len(delivered) > 0:
+                self.duplicate_filter.mark_seen(msg_id)
             logger.info(f"[Router] Broadcast {msg_id} -> Delivered: {len(delivered)}, Failed: {len(failed)}")
             return len(delivered) > 0, delivered, failed
 
@@ -137,6 +143,7 @@ class MessageRouter:
             )
             self.node_manager.record_attempt(dest, success)
             if success:
+                self.duplicate_filter.mark_seen(msg_id)
                 logger.info(f"[Router] Direct delivery {msg_id} -> {dest} SUCCESS")
                 return True, [dest], []
             else:
@@ -161,6 +168,7 @@ class MessageRouter:
             )
             self.node_manager.record_attempt(relay_id, success)
             if success:
+                self.duplicate_filter.mark_seen(msg_id)
                 logger.info(f"[Router] Multi-hop relay {msg_id} forwarded via {relay_id} towards {dest}")
                 return True, [relay_id], []
 

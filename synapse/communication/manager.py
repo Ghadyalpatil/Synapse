@@ -16,9 +16,11 @@ from .node_manager import NodeManager, STATUS_ONLINE
 from .protocol import (
     SynapseMessage,
     TYPE_ALERT,
+    TYPE_HEARTBEAT,
     TYPE_SYNC_REQUEST,
     TYPE_TARGET_DETECTED
 )
+from synapse import clock as _clock
 from .queue_manager import QueueManager
 from .router import MessageRouter
 from .security import SecurityManager
@@ -82,7 +84,8 @@ class CommunicationManager:
             discovery_port=self.discovery_port,
             public_key=self.security.get_public_key_hex(),
             broadcast_ip=self.broadcast_ip,
-            on_node_discovered=self._on_node_discovered
+            on_node_discovered=self._on_node_discovered,
+            verify_key=self.security.get_verify_key_hex()
         )
 
         # 7. Heartbeat Watchdog
@@ -154,6 +157,23 @@ class CommunicationManager:
         # Attempt immediate delivery
         success, delivered_nodes, failed_nodes = await self.router.forward_or_deliver(msg)
 
+        # Record in local messages table for audit trail
+        self.db.save_message(
+            message_id=msg.message_id,
+            source_node=self.node_id,
+            destination_node=destination_node,
+            message_type=message_type,
+            payload=payload,
+            event_id=event_id,
+            priority=priority,
+            ttl=msg.ttl,
+            hop_count=msg.hop_count,
+            route=msg.route,
+            timestamp=msg.timestamp,
+            delivered=success,
+            status="DELIVERED" if success else "OUTBOX_PENDING"
+        )
+
         if success:
             logger.info(f"[CommManager] Sent {msg.message_id} ({message_type}) -> {destination_node} (Delivered: {delivered_nodes})")
             return {
@@ -194,8 +214,21 @@ class CommunicationManager:
             logger.warning(f"[Security] Rejected message {msg_id} from {source}: {reason}")
             return {"status": "REJECTED", "reason": reason}
 
-        # Update peer last seen if known
+        # Cryptographic Signature Verification
+        signature = msg_dict.get("signature")
         peer = self.node_manager.get_peer(source)
+        verify_key = peer.get("verify_key") if peer else None
+
+        if signature:
+            if not verify_key:
+                # Signature present but no verify key on file — reject to prevent key-stripping attacks
+                logger.warning(f"[Security] Rejected message {msg_id} from {source}: Signature present but no verify key for peer")
+                return {"status": "REJECTED", "reason": "UNKNOWN_PEER_KEY"}
+            if not self.security.verify_signature(msg_dict, signature, verify_key):
+                logger.warning(f"[Security] Rejected message {msg_id} from {source}: Invalid cryptographic signature")
+                return {"status": "REJECTED", "reason": "INVALID_SIGNATURE"}
+
+        # Update peer last seen if known
         if peer:
             self.node_manager.set_status(source, STATUS_ONLINE)
 
@@ -226,6 +259,13 @@ class CommunicationManager:
         )
 
         # Dispatch by message type
+        if msg_type == TYPE_HEARTBEAT:
+            # Lightweight two-way heartbeat: update peer presence and ACK immediately
+            if peer:
+                self.node_manager.set_status(source, STATUS_ONLINE)
+            logger.debug(f"[CommManager] Heartbeat from {source} — peer last_seen updated")
+            return {"status": "ACK", "message_id": msg_id, "timestamp": _clock.now()}
+
         if msg_type in (TYPE_TARGET_DETECTED, TYPE_ALERT):
             payload = msg_dict.get("payload", {})
             event_id = msg_dict.get("event_id") or msg_id
@@ -264,19 +304,19 @@ class CommunicationManager:
             return {
                 "status": "ACK",
                 "message_id": msg_id,
-                "timestamp": time.time(),
+                "timestamp": _clock.now(),
                 "events": events
             }
 
         return {
             "status": "ACK",
             "message_id": msg_id,
-            "timestamp": time.time()
+            "timestamp": _clock.now()
         }
 
-    def _on_node_discovered(self, node_id: str, ip: str, port: int, public_key: Optional[str]):
+    def _on_node_discovered(self, node_id: str, ip: str, port: int, public_key: Optional[str], verify_key: Optional[str] = None):
         """Callback when a peer is discovered via UDP."""
-        is_new = self.node_manager.register_peer(node_id, ip, port, public_key)
+        is_new = self.node_manager.register_peer(node_id, ip, port, public_key, verify_key=verify_key)
         if is_new:
             # Trigger state sync and flush any pending outbox items for this peer
             asyncio.create_task(self.queue_manager.retry_pending_outbox(target_node=node_id))
