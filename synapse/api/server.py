@@ -55,7 +55,9 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
     )
 
     static_dir = Path(__file__).parent / "static"
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    # Only mount static files if the directory exists (tolerates fresh Pi deployments)
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     active_websockets: List[WebSocket] = []
 
@@ -72,7 +74,15 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def get_dashboard():
         index_file = static_dir / "index.html"
-        return FileResponse(str(index_file))
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        return HTMLResponse(
+            content="<html><body><h2>SYNAPSE Node Online</h2>"
+                    f"<p>Node: <b>{comm_manager.node_id}</b></p>"
+                    "<p>API available at <a href='/api/status'>/api/status</a></p>"
+                    "</body></html>",
+            status_code=200
+        )
 
     @app.get("/api/status")
     async def get_status():

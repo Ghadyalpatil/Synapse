@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+from synapse import clock as _clock
 from ..storage.database import Database
 
 logger = logging.getLogger("synapse.node_manager")
@@ -67,7 +68,7 @@ class NodeManager:
             "public_key": public_key or existing.get("public_key"),
             "verify_key": verify_key or existing.get("verify_key"),
             "status": STATUS_ONLINE,
-            "last_seen": time.time(),
+            "last_seen": _clock.now(),
             "latency_ms": existing.get("latency_ms"),
             "packet_loss": existing.get("packet_loss", 0.0),
             "total_attempts": existing.get("total_attempts", 0),
@@ -118,7 +119,7 @@ class NodeManager:
 
         peer["total_attempts"] = peer.get("total_attempts", 0) + 1
         if success:
-            peer["last_seen"] = time.time()
+            peer["last_seen"] = _clock.now()
             if latency_ms is not None:
                 peer["latency_ms"] = latency_ms
         else:

@@ -25,8 +25,11 @@ def main():
 
     sec = SecurityManager(args.node_id, target_dir)
     print(f"[+] Cryptographic identity generated for [{args.node_id}]")
-    print(f"[+] Public Key (Hex): {sec.get_public_key_hex()}")
+    print(f"    Public Key (Curve25519, hex) : {sec.get_public_key_hex()}")
+    print(f"    Verify Key (Ed25519, hex)   : {sec.get_verify_key_hex()}")
     print(f"[+] Key files stored in: {target_dir.resolve()}")
+    print("")
+    print("[!] Share the Verify Key with all peer nodes so they can verify your signatures.")
 
 
 if __name__ == "__main__":

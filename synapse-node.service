@@ -1,30 +1,41 @@
 [Unit]
-Description=SYNAPSE — Local-Grid Border Surveillance & Communication Node
+Description=SYNAPSE — Local-Grid Border Surveillance & Tactical Communication Node
+Documentation=https://github.com/Ghadyalpatil/Synapse
 After=network.target
 Wants=network.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/synapse
+Group=pi
+WorkingDirectory=/opt/synapse
+EnvironmentFile=-/etc/synapse/node.env
 Environment=PYTHONUNBUFFERED=1
 Environment=SYNAPSE_NODE_ID=SYNAPSE-001
 Environment=SYNAPSE_COMM_PORT=5000
 Environment=SYNAPSE_DISCOVERY_PORT=5999
 Environment=SYNAPSE_API_PORT=8080
-Environment=SYNAPSE_BROADCAST_IP=255.255.255.255
+Environment=SYNAPSE_BROADCAST_IP=192.168.10.255
 Environment=SYNAPSE_LOG_LEVEL=INFO
+Environment=SYNAPSE_DATA_DIR=/var/lib/synapse/data
+Environment=SYNAPSE_KEYS_DIR=/etc/synapse/keys
 
-ExecStart=/usr/bin/python3 /home/pi/synapse/main.py
+ExecStart=/usr/bin/python3 -m synapse
 Restart=always
 RestartSec=5s
 
-# Security sandboxing
+# Security sandboxing (fully air-gapped — no internet capability needed)
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/pi/synapse/data
+ReadWritePaths=/var/lib/synapse/data /var/log/synapse /etc/synapse/keys /opt/synapse/var
 
-# Resource limits for Raspberry Pi
+# Prevent this service from reaching the internet
+RestrictAddressFamilies=AF_INET AF_UNIX
+IPAddressDeny=any
+# Allow LAN-only (adjust to match your actual subnet)
+IPAddressAllow=127.0.0.1/8 192.168.10.0/24 224.0.0.0/4
+
+# Resource limits for edge devices (RPi / Jetson)
 LimitNOFILE=65536
 TasksMax=256
 
