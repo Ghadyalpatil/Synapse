@@ -142,6 +142,13 @@ class Database:
             except sqlite3.OperationalError:
                 pass
 
+            # Ensure source_node column exists for pre-existing sensor_data tables
+            try:
+                self._conn.execute("ALTER TABLE sensor_data ADD COLUMN source_node TEXT DEFAULT ''")
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass
+
     def close(self):
         with self._lock:
             self._conn.close()
@@ -265,14 +272,84 @@ class Database:
     # Raw Sensor Telemetry
     # ──────────────────────────────────────────────────────────────
 
-    def save_sensor_reading(self, sensor_id: str, sensor_type: str, raw_value: Any, timestamp: Optional[float] = None):
+    def save_sensor_reading(self, sensor_id: str, sensor_type: str, raw_value: Any,
+                            timestamp: Optional[float] = None, source_node: Optional[str] = None):
         with self._lock:
             val_str = json.dumps(raw_value) if not isinstance(raw_value, str) else raw_value
+            ts = timestamp if timestamp is not None else clock.now()
+            s_node = source_node or ""
+            if not s_node and isinstance(raw_value, dict):
+                s_node = raw_value.get("source_node", "")
             self._conn.execute(
-                "INSERT INTO sensor_data (sensor_id, sensor_type, raw_value, timestamp) VALUES (?, ?, ?, ?)",
-                (sensor_id, sensor_type, val_str, timestamp or time.time())
+                "INSERT INTO sensor_data (sensor_id, sensor_type, raw_value, timestamp, source_node) VALUES (?, ?, ?, ?, ?)",
+                (sensor_id, sensor_type, val_str, ts, s_node)
             )
             self._conn.commit()
+
+    def get_sensor_readings(self, limit: int = 100, sensor_type: Optional[str] = None,
+                            source_node: Optional[str] = None, since: Optional[float] = None) -> List[Dict[str, Any]]:
+        with self._lock:
+            query = "SELECT * FROM sensor_data WHERE 1=1"
+            params: List[Any] = []
+            if sensor_type:
+                query += " AND sensor_type = ?"
+                params.append(sensor_type)
+            if source_node:
+                query += " AND source_node = ?"
+                params.append(source_node)
+            if since:
+                query += " AND timestamp > ?"
+                params.append(since)
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cur = self._conn.execute(query, tuple(params))
+            results = []
+            for r in cur.fetchall():
+                d = dict(r)
+                if d.get("raw_value"):
+                    try:
+                        d["raw_value"] = json.loads(d["raw_value"])
+                    except Exception:
+                        pass
+                results.append(d)
+            return results
+
+    def get_latest_sensor_readings(self, source_node: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns the most recent reading for each distinct sensor_id."""
+        with self._lock:
+            if source_node:
+                cur = self._conn.execute("""
+                    SELECT s1.* FROM sensor_data s1
+                    INNER JOIN (
+                        SELECT sensor_id, MAX(timestamp) as max_ts
+                        FROM sensor_data
+                        WHERE source_node = ?
+                        GROUP BY sensor_id
+                    ) s2 ON s1.sensor_id = s2.sensor_id AND s1.timestamp = s2.max_ts
+                    WHERE s1.source_node = ?
+                    ORDER BY s1.sensor_id ASC
+                """, (source_node, source_node))
+            else:
+                cur = self._conn.execute("""
+                    SELECT s1.* FROM sensor_data s1
+                    INNER JOIN (
+                        SELECT COALESCE(source_node, '') as src, sensor_id, MAX(timestamp) as max_ts
+                        FROM sensor_data
+                        GROUP BY COALESCE(source_node, ''), sensor_id
+                    ) s2 ON COALESCE(s1.source_node, '') = s2.src AND s1.sensor_id = s2.sensor_id AND s1.timestamp = s2.max_ts
+                    ORDER BY s1.source_node ASC, s1.sensor_id ASC
+                """)
+            results = []
+            for r in cur.fetchall():
+                d = dict(r)
+                if d.get("raw_value"):
+                    try:
+                        d["raw_value"] = json.loads(d["raw_value"])
+                    except Exception:
+                        pass
+                results.append(d)
+            return results
 
     # ──────────────────────────────────────────────────────────────
     # Messages & Inbox

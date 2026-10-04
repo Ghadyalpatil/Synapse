@@ -8,11 +8,11 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from synapse import clock
 from ..communication.manager import CommunicationManager
-from ..communication.protocol import TYPE_ALERT, TYPE_TARGET_DETECTED
+from ..communication.protocol import TYPE_ALERT, TYPE_COMMAND, TYPE_SENSOR_DATA, TYPE_TARGET_DETECTED
 from ..sensors.sensor_engine import SensorManager
 from ..storage.database import Database
 
@@ -23,11 +23,15 @@ class EventEngine:
     """Evaluates sensor readings, detects security threats, and initiates grid alerts."""
 
     def __init__(self, node_id: str, sensor_manager: SensorManager,
-                 comm_manager: CommunicationManager, db: Database):
+                 comm_manager: CommunicationManager, db: Database,
+                 stream_telemetry: bool = False,
+                 telemetry_target: str = "BROADCAST"):
         self.node_id = node_id
         self.sensor_manager = sensor_manager
         self.comm_manager = comm_manager
         self.db = db
+        self.stream_telemetry = stream_telemetry
+        self.telemetry_target = telemetry_target
 
         self._poll_task: Optional[asyncio.Task] = None
         self._is_running = False
@@ -35,6 +39,11 @@ class EventEngine:
     async def start(self, auto_poll_interval: Optional[float] = None):
         """Starts the event engine and optional sensor polling loop."""
         self._is_running = True
+        # Listen for remote grid commands from Command Centre
+        try:
+            self.comm_manager.add_event_listener(self._handle_grid_command)
+        except Exception:
+            pass
         if auto_poll_interval:
             self._poll_task = asyncio.create_task(self._poll_loop(auto_poll_interval))
         logger.info(f"Event Processing Engine active on [{self.node_id}]")
@@ -152,10 +161,71 @@ class EventEngine:
         event_id = await self.process_sensor_reading(reading)
         return event_id or "EVT-MANUAL-DISCARDED"
 
-    async def _poll_loop(self, interval: float):
-        """Periodically samples sensors."""
-        while self._is_running:
+    async def broadcast_sensor_telemetry(self, readings: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Samples attached sensors (or accepts readings) and transmits full multi-sensor
+        telemetry (TYPE_SENSOR_DATA) across the independent SYNAPSE mesh grid.
+        """
+        if readings is None:
             readings = self.sensor_manager.sample_all()
-            for r in readings:
-                await self.process_sensor_reading(r)
+
+        now = clock.now()
+        for r in readings:
+            if isinstance(r, dict):
+                r.setdefault("source_node", self.node_id)
+                r.setdefault("timestamp", now)
+                self.db.save_sensor_reading(
+                    sensor_id=r.get("sensor_id", f"{self.node_id}-SENSOR"),
+                    sensor_type=r.get("sensor_type", "unknown"),
+                    raw_value=r,
+                    timestamp=r.get("timestamp", now),
+                    source_node=self.node_id
+                )
+
+        payload = {
+            "node_id": self.node_id,
+            "readings": readings,
+            "timestamp": now,
+            "sample_count": len(readings)
+        }
+
+        return await self.comm_manager.send_message(
+            destination_node=self.telemetry_target,
+            message_type=TYPE_SENSOR_DATA,
+            payload=payload,
+            priority="P2"
+        )
+
+    async def _poll_loop(self, interval: float):
+        """Periodically samples sensors, evaluates threats, and optionally streams telemetry."""
+        while self._is_running:
+            try:
+                readings = self.sensor_manager.sample_all()
+                for r in readings:
+                    r.setdefault("source_node", self.node_id)
+                    await self.process_sensor_reading(r)
+                if self.stream_telemetry:
+                    try:
+                        await self.broadcast_sensor_telemetry(readings)
+                    except Exception as te:
+                        logger.debug(f"[EventEngine] Sensor telemetry broadcast skipped: {te}")
+            except Exception as e:
+                logger.error(f"[EventEngine] Error in poll loop: {e}")
             await asyncio.sleep(interval)
+
+    def _handle_grid_command(self, msg_dict: Dict[str, Any]):
+        """Executes operational commands dispatched across the Synapse mesh."""
+        if msg_dict.get("message_type") != TYPE_COMMAND:
+            return
+
+        payload = msg_dict.get("payload", {})
+        cmd = payload.get("command") if isinstance(payload, dict) else str(payload)
+        logger.info(f"[EventEngine] Executing grid command: {cmd}")
+
+        if cmd in ("SAMPLE_SENSORS", "POLL_NOW"):
+            asyncio.create_task(self.broadcast_sensor_telemetry())
+        elif cmd == "TRIGGER_DETECTION":
+            s_type = payload.get("sensor_type", "thermal") if isinstance(payload, dict) else "thermal"
+            conf = float(payload.get("confidence", 0.95)) if isinstance(payload, dict) else 0.95
+            details = payload.get("details") if isinstance(payload, dict) else None
+            asyncio.create_task(self.trigger_manual_event(sensor_type=s_type, confidence=conf, details=details))

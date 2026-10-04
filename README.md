@@ -125,8 +125,34 @@ python cli.py alerts
 python cli.py trigger --type thermal --confidence 0.95
 ```
 
+### Tactical Command Centre & Live Multi-Sensor Demonstration
+
+SYNAPSE includes a dedicated **Tactical Command Centre (C2)** workstation designed to demonstrate the complete edge surveillance system. Edge modules stream all raw sensor inputs (thermal, acoustic, motion) across the independent TCP mesh grid using length-prefixed binary framing and Ed25519 signatures directly to the Command Centre.
+
+#### One-Click Multi-Window Demonstration:
+```powershell
+# Launches Node 001, Node 002, and the Command Centre in separate desktop windows:
+.\launch_demonstration.ps1
+# Or on Windows cmd:
+launch_demonstration.bat
+```
+The Command Centre dashboard will automatically open at `http://127.0.0.1:9000`.
+
+#### Running Components Individually:
+```bash
+# Terminal 1: Edge Node 001 with sensor streaming enabled
+python -m synapse --node-id SYNAPSE-001 --comm-port 5000 --api-port 8080 --peer COMMAND-CENTER@127.0.0.1:5050 --auto-poll 2.5 --stream-telemetry
+
+# Terminal 2: Edge Node 002 with sensor streaming enabled
+python -m synapse --node-id SYNAPSE-002 --comm-port 5001 --api-port 8081 --peer COMMAND-CENTER@127.0.0.1:5050 --auto-poll 3.0 --stream-telemetry
+
+# Terminal 3: Tactical Command Centre Workstation
+python command_center.py --node-id COMMAND-CENTER --comm-port 5050 --port 9000 --open-browser
+```
+
 ### Running Test Suite
 
 ```bash
 pytest
 ```
+

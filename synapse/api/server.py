@@ -119,6 +119,20 @@ def create_api_app(comm_manager: Any, event_engine: Any, db: Any) -> FastAPI:
             })
         return res
 
+    @app.get("/api/sensors/latest")
+    async def get_latest_sensors(source_node: Optional[str] = None):
+        return db.get_latest_sensor_readings(source_node=source_node)
+
+    @app.get("/api/sensors/readings")
+    async def get_sensor_readings(limit: int = 100, sensor_type: Optional[str] = None,
+                                  source_node: Optional[str] = None, since: Optional[float] = None):
+        return db.get_sensor_readings(limit=limit, sensor_type=sensor_type, source_node=source_node, since=since)
+
+    @app.post("/api/sensors/sample")
+    async def sample_sensors():
+        res = await event_engine.broadcast_sensor_telemetry()
+        return {"status": "SAMPLED", "broadcast_result": res}
+
     @app.get("/api/events")
     async def get_events(limit: int = 50, since: Optional[float] = None):
         return db.get_events(limit=limit, since=since)

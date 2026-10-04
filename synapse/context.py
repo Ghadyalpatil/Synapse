@@ -36,6 +36,8 @@ class NodeConfig:
     heartbeat_timeout: float = config.HEARTBEAT_TIMEOUT
     retry_interval: float = config.STORE_FORWARD_RETRY_INTERVAL
     auto_poll: float = 0.0
+    stream_telemetry: bool = False
+    telemetry_target: str = "BROADCAST"
     log_level: str = config.LOG_LEVEL
 
 
@@ -79,7 +81,9 @@ class NodeContext:
             node_id=self.config.node_id,
             sensor_manager=self.sensor_manager,
             comm_manager=self.comm_manager,
-            db=self.db
+            db=self.db,
+            stream_telemetry=self.config.stream_telemetry,
+            telemetry_target=self.config.telemetry_target
         )
 
         # 5. Local FastAPI Application

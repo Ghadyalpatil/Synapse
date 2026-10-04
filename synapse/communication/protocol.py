@@ -86,6 +86,7 @@ class SynapseMessage:
     route: List[str] = field(default_factory=list)
     timestamp: float = field(default_factory=clock.now)
     signature: Optional[str] = None
+    verify_key: Optional[str] = None
 
     @classmethod
     def create(cls, source_node: str, destination_node: str,
@@ -124,7 +125,8 @@ class SynapseMessage:
             hop_count=int(data.get("hop_count", 0)),
             route=list(data.get("route", [])),
             timestamp=float(data.get("timestamp", clock.now())),
-            signature=data.get("signature")
+            signature=data.get("signature"),
+            verify_key=data.get("verify_key")
         )
 
 

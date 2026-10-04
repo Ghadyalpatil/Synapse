@@ -59,6 +59,29 @@ def cmd_nodes(args):
     print("=" * 70 + "\n")
 
 
+def cmd_sensors(args):
+    readings = make_request(f"{args.api}/api/sensors/latest")
+    print("\n" + "=" * 80)
+    print(f"{'SOURCE NODE':<16} {'SENSOR ID':<14} {'TYPE':<12} {'READING / METRIC':<34}")
+    print("=" * 80)
+    if not readings:
+        print("No sensor readings received yet.")
+    for r in readings:
+        s_type = r.get("sensor_type", "")
+        raw = r.get("raw_value", {})
+        metric = ""
+        if s_type == "thermal":
+            metric = f"{raw.get('temperature_celsius')}°C (target: {raw.get('target_detected')})"
+        elif s_type == "acoustic":
+            metric = f"{raw.get('decibels')} dB [{raw.get('signature')}]"
+        elif s_type == "motion":
+            metric = f"motion: {raw.get('motion_detected')} (intensity: {raw.get('intensity')})"
+        else:
+            metric = str(raw)[:34]
+        print(f"{r.get('source_node',''):<16} {r.get('sensor_id',''):<14} {s_type:<12} {metric:<34}")
+    print("=" * 80 + "\n")
+
+
 def cmd_events(args):
     events = make_request(f"{args.api}/api/events?limit={args.limit}")
     print("\n" + "=" * 75)
@@ -169,6 +192,10 @@ def main():
     # nodes
     p_nodes = subparsers.add_parser("nodes", help="List known grid nodes and link metrics")
     p_nodes.set_defaults(func=cmd_nodes)
+
+    # sensors
+    p_sensors = subparsers.add_parser("sensors", help="List latest sensor inputs from edge modules")
+    p_sensors.set_defaults(func=cmd_sensors)
 
     # events
     p_events = subparsers.add_parser("events", help="List surveillance events")

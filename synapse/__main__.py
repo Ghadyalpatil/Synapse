@@ -43,6 +43,8 @@ def parse_args():
     parser.add_argument("--heartbeat-timeout", type=float, default=config.HEARTBEAT_TIMEOUT, help="Seconds before node is marked OFFLINE")
     parser.add_argument("--retry-interval", type=float, default=config.STORE_FORWARD_RETRY_INTERVAL, help="Store-and-forward outbox retry interval in seconds")
     parser.add_argument("--auto-poll", type=float, default=0.0, help="Interval in seconds for periodic sensor sampling (0 to disable)")
+    parser.add_argument("--stream-telemetry", action="store_true", help="Stream sensor telemetry across the mesh during polling")
+    parser.add_argument("--telemetry-target", default="BROADCAST", help="Destination node for sensor telemetry (e.g. COMMAND-CENTER or BROADCAST)")
     parser.add_argument("--peer", action="append", default=[], help="Static seed peer in format NODE_ID@IP:PORT (e.g. SYNAPSE-002@127.0.0.1:5001)")
     parser.add_argument("--log-level", default=config.LOG_LEVEL, help="Logging level (DEBUG, INFO, WARN, ERROR)")
     return parser.parse_args()
@@ -79,6 +81,8 @@ async def run_node_async(args):
         heartbeat_timeout=args.heartbeat_timeout,
         retry_interval=args.retry_interval,
         auto_poll=args.auto_poll,
+        stream_telemetry=args.stream_telemetry,
+        telemetry_target=args.telemetry_target,
         log_level=args.log_level
     )
 

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SYNAPSE Tactical Command & Control Centre — Real-time surveillance grid dashboard displaying multi-sensor telemetry, binary protocol inspector, and mesh topology.">
+  <title>SYNAPSE C2 — Tactical Command Centre</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <!-- Background Ambient Glow & Grid -->
+  <div class="ambient-grid"></div>
+  <div class="ambient-glow cyan"></div>
+  <div class="ambient-glow purple"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="c2-header" id="c2-header">
+    <div class="brand-section">
+      <div class="radar-logo-box">
+        <svg class="radar-svg" viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r="18" class="radar-ring r1" />
+          <circle cx="20" cy="20" r="12" class="radar-ring r2" />
+          <circle cx="20" cy="20" r="6" class="radar-ring r3" />
+          <line x1="20" y1="2" x2="20" y2="38" class="radar-crosshair" />
+          <line x1="2" y1="20" x2="38" y2="20" class="radar-crosshair" />
+          <line x1="20" y1="20" x2="36" y2="8" class="radar-sweep" />
+          <circle cx="20" cy="20" r="2.5" class="radar-center" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">SYNAPSE <span class="brand-sub">TACTICAL C2</span></h1>
+        <div class="brand-caption">AIR-GAPPED EDGE SURVEILLANCE &amp; MESH GRID COMMAND CENTRE</div>
+      </div>
+    </div>
+
+    <!-- Live Status Indicators -->
+    <div class="header-pills">
+      <div class="status-pill" id="pill-ws-status">
+        <span class="pulse-dot active" id="dot-ws"></span>
+        <span class="pill-label" id="text-ws">MESH LINK LIVE</span>
+      </div>
+      <div class="status-pill" id="pill-security">
+        <span class="pill-icon">🔒</span>
+        <span class="pill-label">Ed25519 VERIFIED</span>
+      </div>
+      <div class="status-pill" id="pill-station-id">
+        <span class="pill-dim">STATION:</span>
+        <span class="pill-val" id="header-node-id">COMMAND-CENTER</span>
+      </div>
+      <div class="status-pill" id="pill-time">
+        <span class="pill-icon">⏱️</span>
+        <span class="pill-val mono" id="header-clock">00:00:00 UTC</span>
+      </div>
+      <button class="icon-btn" id="btn-audio-toggle" title="Toggle Tactical Audio Alert Chimes" onclick="toggleAudioAlerts()">
+        <span id="audio-icon">🔊</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Metric Quick-Strip -->
+  <section class="metric-strip" id="metric-strip" aria-label="System Metrics">
+    <div class="metric-card" id="card-m-nodes">
+      <div class="m-header">
+        <span class="m-title">GRID NODES</span>
+        <span class="m-badge green" id="badge-nodes-online">0 ONLINE</span>
+      </div>
+      <div class="m-val" id="val-total-nodes">0</div>
+      <div class="m-sub" id="sub-nodes-desc">Zero-Cloud Tactical Peer Grid</div>
+    </div>
+
+    <div class="metric-card" id="card-m-sensors">
+      <div class="m-header">
+        <span class="m-title">SENSORS ONLINE</span>
+        <span class="m-badge cyan" id="badge-sensor-stream">ACTIVE</span>
+      </div>
+      <div class="m-val cyan-text" id="val-total-sensors">0</div>
+      <div class="m-sub">Thermal • Acoustic • Perimeter</div>
+    </div>
+
+    <div class="metric-card" id="card-m-throughput">
+      <div class="m-header">
+        <span class="m-title">COMM PACKETS</span>
+        <span class="m-badge purple">TCP FRAMED</span>
+      </div>
+      <div class="m-val purple-text" id="val-total-packets">0</div>
+      <div class="m-sub" id="sub-packet-rate">Binary Wire Ingestion</div>
+    </div>
+
+    <div class="metric-card" id="card-m-alerts">
+      <div class="m-header">
+        <span class="m-title">ACTIVE ALERTS</span>
+        <span class="m-badge amber" id="badge-alert-status">CLEAR</span>
+      </div>
+      <div class="m-val amber-text" id="val-total-alerts">0</div>
+      <div class="m-sub" id="sub-alerts-desc">Surveillance Anomaly Engine</div>
+    </div>
+
+    <div class="metric-card" id="card-m-outbox">
+      <div class="m-header">
+        <span class="m-title">STORE &amp; FORWARD</span>
+        <span class="m-badge blue" id="badge-outbox">0 PENDING</span>
+      </div>
+      <div class="m-val blue-text" id="val-outbox-delivered">0</div>
+      <div class="m-sub">Autonomous Mesh Queue Recovery</div>
+    </div>
+  </section>
+
+  <!-- Navigation Tabs & Global Actions -->
+  <nav class="c2-nav" id="c2-nav">
+    <div class="tab-list" role="tablist">
+      <button class="tab-btn active" id="tab-btn-sensors" onclick="switchTab('sensors')" role="tab" aria-selected="true">
+        <span class="tab-icon">📊</span> SENSOR MATRIX
+      </button>
+      <button class="tab-btn" id="tab-btn-protocol" onclick="switchTab('protocol')" role="tab" aria-selected="false">
+        <span class="tab-icon">⚡</span> PROTOCOL INSPECTOR
+      </button>
+      <button class="tab-btn" id="tab-btn-nodes" onclick="switchTab('nodes')" role="tab" aria-selected="false">
+        <span class="tab-icon">🌐</span> MESH TOPOLOGY
+      </button>
+      <button class="tab-btn" id="tab-btn-alerts" onclick="switchTab('alerts')" role="tab" aria-selected="false">
+        <span class="tab-icon">🚨</span> ALERTS &amp; EVENTS
+      </button>
+      <button class="tab-btn" id="tab-btn-terminal" onclick="switchTab('terminal')" role="tab" aria-selected="false">
+        <span class="tab-icon">💻</span> MESH COMMAND
+      </button>
+    </div>
+
+    <div class="global-actions">
+      <button class="btn-action cyan-btn" id="btn-global-sweep" onclick="requestGlobalSensorSweep()">
+        <span>📡</span> REQUEST SENSOR SWEEP
+      </button>
+      <button class="btn-action amber-btn" id="btn-inject-scenario" onclick="openSimModal()">
+        <span>🎯</span> SIMULATE BREACH
+      </button>
+      <button class="btn-action ghost-btn" id="btn-refresh-all" onclick="refreshAllData()">
+        <span>🔄</span> REFRESH
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main View Container -->
+  <main class="c2-main">
+
+    <!-- TAB 1: SENSOR MATRIX -->
+    <section class="tab-panel active" id="panel-sensors" role="tabpanel">
+      
+      <!-- Sensor Filter / Node Selector Bar -->
+      <div class="panel-header-bar">
+        <div class="filter-group">
+          <span class="filter-label">FILTER BY NODE:</span>
+          <div class="node-chips" id="node-chips-container">
+            <button class="chip active" onclick="filterSensorNode('ALL')">ALL NODES</button>
+          </div>
+        </div>
+        <div class="stream-status">
+          <span class="telemetry-ping" id="telemetry-ping-time">Last update: Just now</span>
+          <span class="chip-sm">LIVE TELEMETRY STREAM</span>
+        </div>
+      </div>
+
+      <!-- Live Multi-Sensor Grid Container -->
+      <div class="sensor-cards-grid" id="sensor-cards-grid">
+        <!-- Rendered dynamically by app.js -->
+        <div class="sensor-empty-state">
+          <div class="empty-icon">📡</div>
+          <h3>Awaiting Edge Node Sensor Telemetry...</h3>
+          <p>Synapse edge modules stream thermal, acoustic, and perimeter motion readings over the independent binary TCP mesh network.</p>
+          <div class="empty-actions">
+            <button class="btn-action cyan-btn" onclick="requestGlobalSensorSweep()">Trigger Immediate Sample Sweep</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Sensor Telemetry Table Section -->
+      <div class="c2-panel-box" style="margin-top: 1.5rem;">
+        <div class="box-header">
+          <div class="box-title">
+            <span>📈 REAL-TIME SENSOR TELEMETRY LOG</span>
+            <span class="badge gray" id="telemetry-table-count">0 Records</span>
+          </div>
+          <button class="btn-sm ghost-btn" onclick="exportTelemetryJSON()">Export JSON</button>
+        </div>
+        <div class="table-scroll">
+          <table class="c2-table" id="telemetry-log-table">
+            <thead>
+              <tr>
+                <th>Time (UTC)</th>
+                <th>Source Node</th>
+                <th>Sensor ID</th>
+                <th>Sensor Type</th>
+                <th>Primary Reading</th>
+                <th>Status / Classification</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="telemetry-table-body">
+              <tr>
+                <td colspan="7" class="text-center text-muted">Listening for mesh sensor data packets...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PROTOCOL & MESH INSPECTOR -->
+    <section class="tab-panel" id="panel-protocol" role="tabpanel">
+      <div class="protocol-info-banner">
+        <div class="banner-title">
+          <span>⚡ SYNAPSE ZERO-CLOUD INDEPENDENT COMMUNICATION PROTOCOL</span>
+        </div>
+        <p>
+          Edge nodes communicate using direct TCP sockets with standardized 
+          <strong>4-byte big-endian binary framing</strong> (<code>!I</code>) and 
+          <strong>Ed25519 cryptographic signatures</strong>. Messages include TTL, hop route,
+          replay nonces, and priority queuing (P0/P1/P2).
+        </p>
+      </div>
+
+      <div class="c2-panel-box">
+        <div class="box-header">
+          <div class="box-title">
+            <span>📡 LIVE MESH WIRE INGESTION STREAM</span>
+            <span class="badge green">SOCKET MONITOR</span>
+          </div>
+          <div class="box-tools">
+            <input type="text" id="protocol-filter" placeholder="Filter packets..." class="c2-input-sm" oninput="filterPackets(this.value)">
+            <button class="btn-sm ghost-btn" onclick="clearPacketHistory()">Clear View</button>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table class="c2-table mono" id="packets-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Message ID</th>
+                <th>Source &rarr; Dest</th>
+                <th>Type</th>
+                <th>Priority</th>
+                <th>Transport Layer</th>
+                <th>Crypto Sig (Ed25519)</th>
+                <th>Hops</th>
+                <th>Inspect</th>
+              </tr>
+            </thead>
+            <tbody id="packets-table-body">
+              <tr>
+                <td colspan="9" class="text-center text-muted">Awaiting incoming mesh packets...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: MESH TOPOLOGY -->
+    <section class="tab-panel" id="panel-nodes" role="tabpanel">
+      <div class="c2-panel-box">
+        <div class="box-header">
+          <div class="box-title">
+            <span>🌐 ACTIVE GRID TOPOLOGY &amp; PEER NODES</span>
+          </div>
+          <div class="box-tools">
+            <button class="btn-sm cyan-btn" onclick="openAddPeerModal()">+ Register Peer</button>
+            <button class="btn-sm ghost-btn" onclick="fetchTopology()">Refresh Topology</button>
+          </div>
+        </div>
+
+        <div class="nodes-grid" id="nodes-grid-cards">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: ALERTS & EVENTS -->
+    <section class="tab-panel" id="panel-alerts" role="tabpanel">
+      <div class="c2-panel-box">
+        <div class="box-header">
+          <div class="box-title">
+            <span>🚨 SURVEILLANCE ANOMALY &amp; THREAT DETECTIONS</span>
+          </div>
+          <div class="box-tools">
+            <button class="btn-sm ghost-btn" onclick="fetchAlertsAndEvents()">Refresh Feed</button>
+          </div>
+        </div>
+
+        <div class="alerts-feed-container" id="alerts-feed-list">
+          <!-- Rendered dynamically by app.js -->
+          <div class="feed-empty">No active security alerts recorded. Perimeter nominal.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: MESH COMMAND TERMINAL -->
+    <section class="tab-panel" id="panel-terminal" role="tabpanel">
+      <div class="terminal-container">
+        <div class="terminal-header">
+          <span class="term-dot red"></span>
+          <span class="term-dot yellow"></span>
+          <span class="term-dot green"></span>
+          <span class="term-title">SYNAPSE TACTICAL MESH COMMAND DISPATCH CONSOLE</span>
+        </div>
+
+        <div class="terminal-body" id="terminal-body">
+          <div class="term-line info">[INIT] SYNAPSE Command Centre interactive terminal initialized.</div>
+          <div class="term-line info">[INFO] Transport: Direct TCP Framed binary socket. Cryptography: Ed25519 canonical.</div>
+          <div class="term-line cyan">[HELP] Send remote commands over the mesh to any edge module or BROADCAST.</div>
+        </div>
+
+        <form class="terminal-input-bar" id="terminal-form" onsubmit="handleTerminalSubmit(event)">
+          <div class="term-prompt">&gt;</div>
+          <select id="term-target-node" class="term-select">
+            <option value="BROADCAST">BROADCAST (All Nodes)</option>
+          </select>
+          <select id="term-command-type" class="term-select" onchange="handleCommandPresetChange(this.value)">
+            <option value="SAMPLE_SENSORS">COMMAND: SAMPLE_SENSORS (Force Telemetry Sweep)</option>
+            <option value="TRIGGER_THERMAL">COMMAND: TRIGGER_DETECTION (Thermal Breach)</option>
+            <option value="TRIGGER_ACOUSTIC">COMMAND: TRIGGER_DETECTION (Acoustic Breach)</option>
+            <option value="TRIGGER_MOTION">COMMAND: TRIGGER_DETECTION (Perimeter Intrusion)</option>
+            <option value="PING">COMMAND: PING (Roundtrip Verification)</option>
+            <option value="CUSTOM">COMMAND: CUSTOM (Enter JSON)</option>
+          </select>
+          <input type="text" id="term-custom-input" class="term-input" placeholder="Optional parameters or custom command..." value="">
+          <button type="submit" class="term-btn">DISPATCH OVER MESH</button>
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Packet Inspector Modal Drawer -->
+  <div class="modal-overlay" id="packet-modal-overlay" onclick="closePacketModal(event)">
+    <div class="modal-drawer" id="packet-modal-drawer">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>📦 WIRE PACKET INSPECTOR</span>
+          <span class="badge purple" id="modal-packet-id">MSG-XXXXXXXX</span>
+        </div>
+        <button class="close-btn" onclick="closePacketModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="meta-grid" id="modal-packet-meta">
+          <!-- Key-value details -->
+        </div>
+        <div class="payload-box-header">DECODED JSON PAYLOAD:</div>
+        <pre class="json-code" id="modal-packet-json">{}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulation / Trigger Modal -->
+  <div class="modal-overlay" id="sim-modal-overlay" onclick="closeSimModal(event)">
+    <div class="modal-dialog" id="sim-modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>🎯 SIMULATE SURVEILLANCE DETECTION</span>
+        </div>
+        <button class="close-btn" onclick="closeSimModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-muted); font-size:0.88rem; margin-bottom:1rem;">
+          Dispatch a simulated threat detection command over the independent TCP mesh to trigger target assessment and grid alerts.
+        </p>
+        <div class="sim-actions-grid">
+          <button class="sim-card red" onclick="dispatchQuickBreach('thermal')">
+            <div class="sim-icon">🔥</div>
+            <div class="sim-name">Thermal Target</div>
+            <div class="sim-desc">Body heat anomaly (38.5°C, 95% conf)</div>
+          </button>
+          <button class="sim-card amber" onclick="dispatchQuickBreach('acoustic')">
+            <div class="sim-icon">🔊</div>
+            <div class="sim-name">Acoustic Breach</div>
+            <div class="sim-desc">Vehicle engine anomaly (98 dB, 92% conf)</div>
+          </button>
+          <button class="sim-card cyan" onclick="dispatchQuickBreach('motion')">
+            <div class="sim-icon">🚶</div>
+            <div class="sim-name">Perimeter Motion</div>
+            <div class="sim-desc">Seismic/PIR perimeter intrusion</div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Register Peer Modal -->
+  <div class="modal-overlay" id="peer-modal-overlay" onclick="closePeerModal(event)">
+    <div class="modal-dialog" id="peer-modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>🌐 REGISTER MESH PEER NODE</span>
+        </div>
+        <button class="close-btn" onclick="closePeerModal()">&times;</button>
+      </div>
+      <form class="modal-body" onsubmit="handleRegisterPeerSubmit(event)">
+        <div class="form-group">
+          <label>Node ID</label>
+          <input type="text" id="input-peer-node-id" placeholder="e.g. SYNAPSE-001" required class="c2-input">
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>IP Address</label>
+            <input type="text" id="input-peer-ip" value="127.0.0.1" required class="c2-input">
+          </div>
+          <div class="form-group flex-1">
+            <label>TCP Comm Port</label>
+            <input type="number" id="input-peer-port" value="5000" required class="c2-input">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Verify Key (Hex - Optional)</label>
+          <input type="text" id="input-peer-vkey" placeholder="Ed25519 verify key hex (auto-discovered if left blank)" class="c2-input">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-action ghost-btn" onclick="closePeerModal()">Cancel</button>
+          <button type="submit" class="btn-action cyan-btn">Register &amp; Connect</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

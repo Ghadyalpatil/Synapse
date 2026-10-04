@@ -16,7 +16,9 @@ from .node_manager import NodeManager, STATUS_ONLINE
 from .protocol import (
     SynapseMessage,
     TYPE_ALERT,
+    TYPE_COMMAND,
     TYPE_HEARTBEAT,
+    TYPE_SENSOR_DATA,
     TYPE_SYNC_REQUEST,
     TYPE_TARGET_DETECTED
 )
@@ -151,6 +153,9 @@ class CommunicationManager:
             priority=priority
         )
 
+        # Attach sender verify key for transparent peer verification
+        msg.verify_key = self.security.get_verify_key_hex()
+
         # Cryptographically sign canonical fields
         msg.signature = self.security.sign_message(msg.to_dict())
 
@@ -220,13 +225,25 @@ class CommunicationManager:
         verify_key = peer.get("verify_key") if peer else None
 
         if signature:
+            sender_vk = msg_dict.get("verify_key")
             if not verify_key:
-                # Signature present but no verify key on file — reject to prevent key-stripping attacks
-                logger.warning(f"[Security] Rejected message {msg_id} from {source}: Signature present but no verify key for peer")
-                return {"status": "REJECTED", "reason": "UNKNOWN_PEER_KEY"}
-            if not self.security.verify_signature(msg_dict, signature, verify_key):
-                logger.warning(f"[Security] Rejected message {msg_id} from {source}: Invalid cryptographic signature")
-                return {"status": "REJECTED", "reason": "INVALID_SIGNATURE"}
+                # If verify_key not stored yet, check if message carries sender's verify_key (Trust On First Use)
+                if sender_vk and self.security.verify_signature(msg_dict, signature, sender_vk):
+                    verify_key = sender_vk
+                    if peer:
+                        self.node_manager.register_peer(
+                            source, peer["ip"], peer["port"],
+                            public_key=peer.get("public_key"),
+                            verify_key=sender_vk
+                        )
+                else:
+                    # Signature present but no verify key on file — reject to prevent key-stripping attacks
+                    logger.warning(f"[Security] Rejected message {msg_id} from {source}: Signature present but no verify key for peer")
+                    return {"status": "REJECTED", "reason": "UNKNOWN_PEER_KEY"}
+            else:
+                if not self.security.verify_signature(msg_dict, signature, verify_key):
+                    logger.warning(f"[Security] Rejected message {msg_id} from {source}: Invalid cryptographic signature")
+                    return {"status": "REJECTED", "reason": "INVALID_SIGNATURE"}
 
         # Update peer last seen if known
         if peer:
@@ -265,6 +282,63 @@ class CommunicationManager:
                 self.node_manager.set_status(source, STATUS_ONLINE)
             logger.debug(f"[CommManager] Heartbeat from {source} — peer last_seen updated")
             return {"status": "ACK", "message_id": msg_id, "timestamp": _clock.now()}
+
+        if msg_type == TYPE_SENSOR_DATA:
+            payload = msg_dict.get("payload", {})
+            readings = []
+            if isinstance(payload, dict):
+                if "readings" in payload and isinstance(payload["readings"], list):
+                    readings = payload["readings"]
+                else:
+                    readings = [payload]
+            elif isinstance(payload, list):
+                readings = payload
+
+            for r in readings:
+                if isinstance(r, dict):
+                    s_id = r.get("sensor_id", f"{source}-SENSOR")
+                    s_type = r.get("sensor_type", "unknown")
+                    s_ts = float(r.get("timestamp", timestamp))
+                    if "source_node" not in r:
+                        r["source_node"] = source
+                    self.db.save_sensor_reading(
+                        sensor_id=s_id,
+                        sensor_type=s_type,
+                        raw_value=r,
+                        timestamp=s_ts,
+                        source_node=source
+                    )
+
+            # Notify listeners (e.g. Command Centre dashboard, WebSockets)
+            for listener in self.event_listeners:
+                try:
+                    listener(msg_dict)
+                except Exception as e:
+                    logger.error(f"Error in sensor event listener: {e}")
+
+            return {
+                "status": "ACK",
+                "message_id": msg_id,
+                "timestamp": _clock.now(),
+                "sensor_readings_ingested": len(readings)
+            }
+
+        if msg_type == TYPE_COMMAND:
+            payload = msg_dict.get("payload", {})
+            cmd = payload.get("command", "") if isinstance(payload, dict) else str(payload)
+            logger.info(f"[CommManager] Received COMMAND: {cmd} from {source}")
+            for listener in self.event_listeners:
+                try:
+                    listener(msg_dict)
+                except Exception as e:
+                    logger.error(f"Error in command listener: {e}")
+
+            return {
+                "status": "ACK",
+                "message_id": msg_id,
+                "command": cmd,
+                "timestamp": _clock.now()
+            }
 
         if msg_type in (TYPE_TARGET_DETECTED, TYPE_ALERT):
             payload = msg_dict.get("payload", {})
