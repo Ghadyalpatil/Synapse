@@ -1,6 +1,7 @@
 [Unit]
 Description=SYNAPSE — Local-Grid Border Surveillance & Tactical Communication Node
 Documentation=https://github.com/Ghadyalpatil/Synapse
+# Start after network interfaces are UP (does not require internet)
 After=network.target
 Wants=network.target
 
@@ -9,18 +10,36 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/opt/synapse
+
+# Primary config from environment file (edit /etc/synapse/node.env to configure)
 EnvironmentFile=-/etc/synapse/node.env
 Environment=PYTHONUNBUFFERED=1
+
+# Defaults — overridden by /etc/synapse/node.env if it exists
 Environment=SYNAPSE_NODE_ID=SYNAPSE-001
 Environment=SYNAPSE_COMM_PORT=5000
 Environment=SYNAPSE_DISCOVERY_PORT=5999
 Environment=SYNAPSE_API_PORT=8080
-Environment=SYNAPSE_BROADCAST_IP=192.168.10.255
+# Set this to the broadcast address of your LAN, e.g. 192.168.1.255
+Environment=SYNAPSE_BROADCAST_IP=192.168.1.255
 Environment=SYNAPSE_LOG_LEVEL=INFO
 Environment=SYNAPSE_DATA_DIR=/var/lib/synapse/data
 Environment=SYNAPSE_KEYS_DIR=/etc/synapse/keys
 
-ExecStart=/usr/bin/python3 -m synapse
+# Launch node with:
+#   - auto-poll every 3 seconds (adjust --auto-poll to taste)
+#   - stream-telemetry: broadcast sensor readings to Command Centre every poll cycle
+#   - peer: static seed registration for the Command Centre PC
+#     IMPORTANT: replace <PC_IP> with the actual LAN IP of the Windows PC
+#     running run_command_center.ps1 (e.g. 192.168.1.10)
+ExecStart=/usr/bin/python3 -m synapse \
+    --auto-poll 3.0 \
+    --stream-telemetry \
+    --telemetry-target COMMAND-CENTER \
+    --peer COMMAND-CENTER@<PC_IP>:5050 \
+    --db-path ${SYNAPSE_DATA_DIR}/node.db \
+    --keys-dir ${SYNAPSE_KEYS_DIR}
+
 Restart=always
 RestartSec=5s
 
@@ -33,7 +52,7 @@ ReadWritePaths=/var/lib/synapse/data /var/log/synapse /etc/synapse/keys /opt/syn
 RestrictAddressFamilies=AF_INET AF_UNIX
 IPAddressDeny=any
 # Allow LAN-only (adjust to match your actual subnet)
-IPAddressAllow=127.0.0.1/8 192.168.10.0/24 224.0.0.0/4
+IPAddressAllow=127.0.0.1/8 192.168.1.0/24 224.0.0.0/4
 
 # Resource limits for edge devices (RPi / Jetson)
 LimitNOFILE=65536
