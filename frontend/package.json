@@ -1,0 +1,19 @@
+{
+    "name": "synapse-communication-v1",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "dependencies": {
+        "framer-motion": "^10.16.4",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-force-graph": "^1.44.0"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^4.0.4",
+        "vite": "^4.4.9"
+    }
+}

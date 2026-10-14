@@ -1,0 +1,31 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+.npm/
+
+# Benchkit and test runs
+benchkit/_run/
+*.log
+
+# Databases and keys created at runtime
+*.db
+backend/crypto/keys/*.key
+backend/crypto/keys/*.pub
+
+# OS files
+.DS_Store
+Thumbs.db
